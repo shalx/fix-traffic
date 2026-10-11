@@ -3,80 +3,197 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport"
+ content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Fix-Traffic</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<link rel="stylesheet"
+ href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
 <style>
 html,body,#map {
   margin:0;
   width:100%;
   height:100%;
   overflow:hidden;
+  font-family:Arial,sans-serif;
 }
+
 #map { background:#e5e5e5; }
+
+.panel {
+  position:absolute;
+  top:10px;
+  left:10px;
+  z-index:1000;
+  background:white;
+  padding:10px;
+  border-radius:8px;
+  box-shadow:0 2px 8px #777;
+  font-size:14px;
+}
+
+button {
+  padding:10px 16px;
+  margin-top:8px;
+  border:0;
+  border-radius:5px;
+  background:#1565c0;
+  color:white;
+  font-size:14px;
+  cursor:pointer;
+}
+
 #car {
   width:18px;
   height:18px;
   background:#1565c0;
   border:3px solid white;
   border-radius:50%;
-  box-shadow:0 0 5px #555;
-}
-#status {
-  position:absolute;
-  top:10px;
-  left:50px;
-  z-index:1000;
-  background:white;
-  padding:8px;
-  font:14px Arial;
-  border-radius:5px;
+  box-shadow:0 0 6px #444;
 }
 </style>
 </head>
+
 <body>
+
 <div id="map"></div>
-<div id="status">Waiting for GPS...</div>
+
+<div class="panel">
+  <strong>Fix-Traffic</strong>
+  <div id="status">Waiting for GPS...</div>
+  <button id="demoBtn" onclick="toggleDemo()">
+    START DEMO
+  </button>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
-var map = L.map('map', {
+"use strict";
+
+var map = L.map("map", {
   zoomControl:false,
-  rotate:false
+  attributionControl:true,
+  preferCanvas:true,
+  zoomAnimation:false,
+  fadeAnimation:false,
+  markerZoomAnimation:false
 }).setView([41.7151,44.8271],14);
 
 L.tileLayer(
-  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  {maxZoom:19, attribution:'© OpenStreetMap'}
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {
+    maxZoom:18,
+    attribution:"© OpenStreetMap",
+    updateWhenIdle:true,
+    keepBuffer:1
+  }
 ).addTo(map);
 
-var car = L.marker([41.7151,44.8271], {
-  icon:L.divIcon({
-    html:'<div id="car"></div>',
-    className:'',
-    iconSize:[24,24],
-    iconAnchor:[12,12]
-  })
-}).addTo(map);
+var car = L.marker(
+  [41.7151,44.8271],
+  {
+    icon:L.divIcon({
+      html:'<div id="car"></div>',
+      className:"",
+      iconSize:[24,24],
+      iconAnchor:[12,12]
+    })
+  }
+).addTo(map);
 
-if (navigator.geolocation) {
+var statusEl=document.getElementById("status");
+var demoBtn=document.getElementById("demoBtn");
+
+var demo=false;
+var demoTimer=null;
+var demoIndex=0;
+
+var demoRoute=[
+  [41.7151,44.8271],
+  [41.7160,44.8290],
+  [41.7170,44.8310],
+  [41.7180,44.8330],
+  [41.7190,44.8350],
+  [41.7200,44.8370],
+  [41.7210,44.8390],
+  [41.7200,44.8410],
+  [41.7180,44.8420],
+  [41.7160,44.8400],
+  [41.7151,44.8271]
+];
+
+function moveCar(lat,lng) {
+  car.setLatLng([lat,lng]);
+  map.panTo([lat,lng],{
+    animate:false
+  });
+}
+
+function toggleDemo() {
+  demo=!demo;
+
+  if(demo) {
+    demoBtn.textContent="STOP DEMO";
+    statusEl.textContent="DEMO - NORTH UP";
+    demoIndex=0;
+
+    moveCar(
+      demoRoute[0][0],
+      demoRoute[0][1]
+    );
+
+    demoTimer=setInterval(function(){
+      demoIndex=(demoIndex+1)%demoRoute.length;
+      var p=demoRoute[demoIndex];
+      moveCar(p[0],p[1]);
+    },1500);
+
+  } else {
+    clearInterval(demoTimer);
+    demoTimer=null;
+    demoBtn.textContent="START DEMO";
+    statusEl.textContent="GPS mode";
+    if(lastGPS) {
+      moveCar(lastGPS.lat,lastGPS.lng);
+    }
+  }
+}
+
+var lastGPS=null;
+
+if(navigator.geolocation) {
   navigator.geolocation.watchPosition(
     function(pos) {
-      var lat=pos.coords.latitude;
-      var lng=pos.coords.longitude;
-      car.setLatLng([lat,lng]);
-      map.setView([lat,lng],14);
-      document.getElementById('status').textContent =
-        'GPS accuracy: '+Math.round(pos.coords.accuracy)+' m';
+      lastGPS={
+        lat:pos.coords.latitude,
+        lng:pos.coords.longitude
+      };
+
+      if(demo) return;
+
+      moveCar(lastGPS.lat,lastGPS.lng);
+
+      statusEl.textContent=
+        "GPS ±"+
+        Math.round(pos.coords.accuracy)+" m";
     },
     function(err) {
-      document.getElementById('status').textContent =
-        'GPS error: '+err.message;
+      if(!demo) {
+        statusEl.textContent=
+          "GPS: "+err.message;
+      }
     },
-    {enableHighAccuracy:true,maximumAge:2000,timeout:15000}
+    {
+      enableHighAccuracy:true,
+      maximumAge:3000,
+      timeout:15000
+    }
   );
+} else {
+  statusEl.textContent="GPS unavailable";
 }
 </script>
 </body>
 </html>
-
